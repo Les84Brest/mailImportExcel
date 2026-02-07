@@ -18,10 +18,7 @@ class EmailImport extends Command
      *
      * @var string
      */
-    protected $signature = 'import:email
-    // {--limit=20 : Максимальное количество писем для проверки}
-    // {--only-new : Только новые письма (непросмотренные)}
-    ';
+    protected $signature = 'import:email';
 
 
     /**
@@ -72,36 +69,6 @@ class EmailImport extends Command
 
             $this->info("Обработка завершена. Обработано писем: {$processedCount}");
 
-            dd('stop');
-            $client = $this->connectToMailbox();
-
-            if (!$client) {
-                $this->error('Не удалось подключиться к почтовому ящику');
-                return Command::FAILURE;
-            }
-
-            $messages = $this->fetchLatestEmails($client);
-            if ($messages->count() === 0) {
-                $this->warn('Нет новых писем для обработки');
-                return Command::SUCCESS;
-            }
-
-            $this->info("Найдено {$messages->count()} писем для проверки");
-
-            dd($messages);
-
-            if ($messages->count() === 0) {
-                $this->warn('Нет новых писем для обработки');
-                return Command::SUCCESS;
-            }
-
-
-            $this->info("Найдено {$messages->count()} писем для проверки");
-
-            $processedCount = $this->processMessages($messages);
-
-            $this->info("Обработка завершена. Обработано писем: {$processedCount}");
-
             return Command::SUCCESS;
         } catch (\Exception $e) {
             $this->error('Ошибка: ' . $e->getMessage());
@@ -138,17 +105,6 @@ class EmailImport extends Command
 
         /** @var FolderCollection $folders */
         $folders = $client->getFolders();
-        // $this->info("ВСЕ ПАПКИ");
-
-        // foreach ($folders as $folder) {
-        //     $this->info("Имя папки: " . $folder->full_name);
-        //     $this->info("Путь: " . $folder->path);
-        //     $this->info("Разделитель: " . $folder->delimiter);
-        //     // $this->info("Атрибуты: " . implode(', ', $folder->attributes));
-        //     $this->info("...");
-        // }
-
-        // $this->info("КОНЕЦ ВСЕ ПАПКИ");
 
         $inboxFolder = $this->getInboxFolder($folders);
         $msgs = $inboxFolder->messages()->unseen()->get();
@@ -164,57 +120,7 @@ class EmailImport extends Command
             }
         }
     }
-    /**
-     * Подключение к почтовому ящику
-     */
-    private function connectToMailbox()
-    {
-        $this->info('Подключение к почтовому ящику...');
 
-        $cm = new ClientManager();
-        $settings = [
-            'host' => env('IMAP_HOST', 'imap.gmail.com'),
-            'port' => env('IMAP_PORT', 993),
-            'encryption' => env('IMAP_ENCRYPTION', 'ssl'),
-            'validate_cert' => env('IMAP_VALIDATE_CERT', true),
-            'username' => env('IMAP_USERNAME'),
-            'password' => env('IMAP_PASSWORD'),
-            'protocol' => env('IMAP_PROTOCOL', 'imap'),
-            'options' => [
-                'debug' => true, // Включаем отладку
-            ],
-        ];
-
-
-        $client = $cm->make($settings);
-
-        $client->connect();
-
-        if (!$client->isConnected()) {
-            throw new \Exception('Не удалось подключиться к почтовому серверу');
-        }
-
-        $this->info('Успешное подключение к почтовому ящику');
-        return $client;
-    }
-
-    /**
-     * Получение последних писем
-     */
-    private function fetchLatestEmails($client)
-    {
-        // Подключаемся к папке INBOX
-
-        $folder = $client->getFolder('INBOX');
-        dump($folder);
-
-        $query = $folder->query()
-            ->leaveUnread();
-
-        $foo = $query->get();
-
-        return $foo;
-    }
 
     /**
      * Обработка писем
@@ -246,17 +152,6 @@ class EmailImport extends Command
                     'error' => $e->getMessage(),
                     'trace' => $e->getTraceAsString()
                 ]);
-
-                // Создаем запись об ошибке если не создана
-                if (isset($mailId) && !ImportHistory::where('mail_id', $mailId)->exists()) {
-                    ImportHistory::createMailRecord([
-                        'mail_id' => $mailId,
-                        'from_email' => $fromEmail ?? 'unknown',
-                        'subject' => $subject ?? 'unknown',
-                        'received_date' => $receivedDate ?? now()->toDateString(),
-                        'attachments_count' => $attachments->count() ?? 0,
-                    ])->markAsFailed($e->getMessage());
-                }
             }
         }
 
@@ -304,19 +199,26 @@ class EmailImport extends Command
                     continue;
                 }
 
-
                 // Обрабатываем файл через сервис
                 $processedData = $this->excelImportService->processFile($savedFilePath);
 
                 // Обновляем счетчик обработанных строк
-
-
                 $processedFiles[] = [
                     'original_name' => $originalName,
                     'saved_path' => $savedFilePath,
                     'processed_rows' => $processedData['processed_rows'] ?? 0,
                     'imported_rows' => $processedData['imported_rows'] ?? 0,
                 ];
+
+                //сохраняем id письма и статистику по импорту
+                ImportHistory::create([
+                    'mail_id' => $message->getMessageId(),
+                    'created_count' =>  $processedData['imported_rows'] ?? 0,
+                    'total_items' => $processedData['processed_rows'] ?? 0,
+                    'filename' => $originalName,
+                    'completed_at' => now(),
+                    
+                ]);
 
                 $this->info("  Файл обработан. Строк: " . ($processedData['processed_rows'] ?? 0));
             } catch (\Exception $e) {

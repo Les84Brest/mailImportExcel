@@ -31,45 +31,44 @@ class ExcelImportService
                 return;
             }
 
-            // удаляем contractor  с id = 11
             ContractorPrice::where('contractor_id', 11)->delete();
 
             $existingPartsOems = LaraPolcarItem::pluck('oem');
 
-            // if ($existingPartsOems->contains('6920516M')) {
-            //     dd('yes');
-            // } else {
-            //     dd('no way');
-            // }
-
-            // dd($existingPartsOems);
-
             $rowNum = 0;
+            $importedParts = 0;
 
             foreach ($worksheet as $row) {
                 $rowNum++;
                 if ($rowNum === 1) continue;
-                dump($row);
 
                 $exists = $existingPartsOems->contains(function ($oem) use ($row) {
                     return $oem === $row['pin'];
                 });
 
                 if ($exists) {
-
                     ContractorPrice::create([
                         'contractor_id' => 11,
                         'article_id' => $row['pin'],
                         'price' => (float) $row['price'],
                         'amount' => (int) $row['count'],
-                        'delivery_date' => '2026-02-07 16:41:23'
+                        'delivery_date' => null,
                     ]);
+
+                    $importedParts++;
                 }
             }
+
+            $fileImportStat = [
+                'imported_rows' => $importedParts,
+                'processed_rows' =>$rowNum -1,
+            ];
         } catch (\Error $e) {
             Log::error('Ошибка обработки Excel файла: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString()
             ]);
         }
+
+        return $fileImportStat ?? [];
     }
 }
