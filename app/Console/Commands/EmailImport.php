@@ -6,11 +6,9 @@ use Illuminate\Console\Command;
 use Webklex\PHPIMAP\ClientManager;
 use Webklex\IMAP\Facades\Client;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use App\Models\ImportHistory;
 use App\Services\ExcelImportService;
 use Illuminate\Support\Facades\Hash;
-use PhpImap\Mailbox;
 use Webklex\PHPIMAP\Support\FolderCollection;
 
 class EmailImport extends Command
@@ -67,8 +65,6 @@ class EmailImport extends Command
                 $this->warn('Нет новых писем для обработки');
                 return Command::SUCCESS;
             }
-
-
 
             $this->info("Найдено {$messages->count()} писем для проверки");
 
@@ -142,17 +138,17 @@ class EmailImport extends Command
 
         /** @var FolderCollection $folders */
         $folders = $client->getFolders();
-        $this->info("ВСЕ ПАПКИ");
+        // $this->info("ВСЕ ПАПКИ");
 
-        foreach ($folders as $folder) {
-            $this->info("Имя папки: " . $folder->full_name);
-            $this->info("Путь: " . $folder->path);
-            $this->info("Разделитель: " . $folder->delimiter);
-            // $this->info("Атрибуты: " . implode(', ', $folder->attributes));
-            $this->info("...");
-        }
+        // foreach ($folders as $folder) {
+        //     $this->info("Имя папки: " . $folder->full_name);
+        //     $this->info("Путь: " . $folder->path);
+        //     $this->info("Разделитель: " . $folder->delimiter);
+        //     // $this->info("Атрибуты: " . implode(', ', $folder->attributes));
+        //     $this->info("...");
+        // }
 
-        $this->info("КОНЕЦ ВСЕ ПАПКИ");
+        // $this->info("КОНЕЦ ВСЕ ПАПКИ");
 
         $inboxFolder = $this->getInboxFolder($folders);
         $msgs = $inboxFolder->messages()->unseen()->get();
@@ -241,97 +237,6 @@ class EmailImport extends Command
                     }
                 }
 
-                $mailId = $message->getMessageId();
-                $fromEmail = $message->getFrom()[0]->mail ?? 'unknown';
-                $subject = $message->getSubject();
-                $receivedDate = $message->getDate();
-
-                $this->info("\nПроверка письма:");
-                $this->line("  ID: {$mailId}");
-                $this->line("  От: {$fromEmail}");
-                $this->line("  Тема: {$subject}");
-                $this->line("  Дата: {$receivedDate}");
-
-                // Проверяем, есть ли письмо в истории
-                // if (!$this->option('force') && ImportHistory::mailExists($mailId)) {
-                //     $this->warn("  Письмо уже обработано ранее. Пропускаем...");
-
-                //     // Создаем запись о пропуске если ее нет
-                //     if (!ImportHistory::where('mail_id', $mailId)->exists()) {
-                //         ImportHistory::createMailRecord([
-                //             'mail_id' => $mailId,
-                //             'from_email' => $fromEmail,
-                //             'subject' => $subject,
-                //             'received_date' => $receivedDate,
-                //             'attachments_count' => $message->getAttachments()->count(),
-                //         ])->markAsSkipped('Уже обработано ранее');
-                //     }
-
-                //     continue;
-                // }
-
-                // Проверяем вложения
-                $attachments = $message->getAttachments();
-
-                if ($attachments->count() === 0) {
-                    $this->warn("  В письме нет вложений. Пропускаем...");
-
-                    // ImportHistory::createMailRecord([
-                    //     'mail_id' => $mailId,
-                    //     'from_email' => $fromEmail,
-                    //     'subject' => $subject,
-                    //     'received_date' => $receivedDate,
-                    //     'attachments_count' => 0,
-                    // ])->markAsSkipped('Нет вложений');
-
-                    continue;
-                }
-
-                $this->info("  Найдено вложений: " . $attachments->count());
-
-                // Фильтруем Excel файлы
-                $excelAttachments = $this->filterExcelAttachments($attachments);
-
-                if (count($excelAttachments) === 0) {
-                    $this->warn("  Нет Excel файлов во вложениях. Пропускаем...");
-
-                    // ImportHistory::createMailRecord([
-                    //     'mail_id' => $mailId,
-                    //     'from_email' => $fromEmail,
-                    //     'subject' => $subject,
-                    //     'received_date' => $receivedDate,
-                    //     'attachments_count' => $attachments->count(),
-                    // ])->markAsSkipped('Нет Excel файлов');
-
-                    continue;
-                }
-
-                // Создаем запись в истории
-                // $historyRecord = ImportHistory::createMailRecord([
-                //     'mail_id' => $mailId,
-                //     'from_email' => $fromEmail,
-                //     'subject' => $subject,
-                //     'received_date' => $receivedDate,
-                //     'attachments_count' => $excelAttachments->count(),
-                // ]);
-
-                // Помечаем как "в обработке"
-                // $historyRecord->markAsProcessing();
-
-                // Скачиваем и обрабатываем файлы
-                $processedFiles = $this->downloadAndProcessAttachments($excelAttachments, $message);
-
-                if (empty($processedFiles)) {
-                    // $historyRecord->markAsFailed('Не удалось обработать файлы');
-                    continue;
-                }
-
-                // Обновляем историю
-                // $historyRecord->markAsCompleted(
-                //     $processedFiles,
-                //     $historyRecord->processed_rows
-                // );
-
                 $processedCount++;
                 $this->info("  ✓ Письмо успешно обработано");
             } catch (\Exception $e) {
@@ -400,11 +305,8 @@ class EmailImport extends Command
                 }
 
 
-                // // Обрабатываем файл через сервис
-                // $processedData = $this->excelImportService->processFile(
-                //     storage_path('app/' . $savedFilePath),
-                //     $originalName
-                // );
+                // Обрабатываем файл через сервис
+                $processedData = $this->excelImportService->processFile($savedFilePath);
 
                 // Обновляем счетчик обработанных строк
 
@@ -455,7 +357,7 @@ class EmailImport extends Command
                 'message_id' => $message->getMessageId(),
             ]);
 
-            return "$saveFolder/$originalName";
+            return "$saveFolder/$saveName";
         } catch (\Exception $e) {
             $this->error("Ошибка сохранения файла {$originalName}: " . $e->getMessage());
             Log::error('Ошибка сохранения вложения', [
