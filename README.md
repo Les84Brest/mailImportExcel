@@ -1,66 +1,140 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# MailExcelImport - Импорт прайс-листов из почты
+*MailaExcelImport* — это система автоматического импорта прайс-листов из почтовых ящиков, разработанная на Laravel 11. Проект предназначен для автоматической обработки входящих Excel файлов и загрузки данных в базу.
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+```
+MailExcelImport/
+├── app/
+│   ├── Console/
+│   │   └── Commands/
+│   │       ├── EmailImport.php      # Основная команда импорта
+│   ├── Imports/
+│   │   └── SparePartImport.php           # Импорт запчастей Excel
+│   ├── Mail/
+│   │   └── ImportReportMail.php          # Отправка отчетов об импорте
+│   ├── Models/
+│   │   ├── LaraPolcarItem.php            # Модель деталей
+│   │   ├── ImportHistory.php             # История импортов
+│   │   └── ContractorPrice.php           
+│   ├── Services/
+│   │   ├── ReportCSVService.php             # Подготовка CSV файла
+│   │   └── ExcelImportService.php        # Сервис обработки Excel
+│   └── Providers/
+├── config/
+│   ├── excel.php                         # Конфигурация Excel
+├── database/
+│   ├── migrations/
+│   │   ...
+│   └── seeders/
+├── resources/
+│   └── views/
+│       └── emails/
+│           └── import-report.blade.php   # Шаблон письма-отчета
+├── storage/
+│   └── app/
+│       └── import/
+│           └── contractor_11/            # Папка для загруженных файлов
+├── docker/
+│   ├── nginx/
+│   ├── php/
+│   └── mysql/
+├── docker-compose.yml
+├── Dockerfile
+└── .env.example
+```
 
-## About Laravel
+## Основные файлы и папки
+Ключевые файлы:
+`app/Console/Commands/EmailImport.php` - Основная команда импорта
+- Подключение к IMAP серверу
+- Поиск новых писем с вложениями
+- Загрузка и обработка Excel файлов
+- Отправка отчетов
+  
+`app/Services/ExcelImportService.php `- Сервис обработки Excel
+- Парсинг Excel файлов
+- Валидация данных
+- Импорт в базу данных
+  
+`app/Mail/ImportReportMail.php` - Почтовый отчет
+- Прикрепление CSV файлов
+- Статистика выполнения
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+`database/migrations/ `- Миграции базы данных
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Развертывание проекта
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Шаг 1: Клонирование проекта
+```bash
+git clone git@github.com:Les84Brest/mailImportExcel.git MailExcelImport
+cd MailExcelImport
+```
+## Шаг 2: Настройка окружения
+```bash
+# Копируем файл окружения
+cp .env.example .env
 
-## Learning Laravel
+# Редактируем .env файл
+nano .env
+```
+### Основные настройки в .env:
+```
+env
+APP_NAME=Laravel
+APP_ENV=local
+APP_KEY=
+APP_DEBUG=true
+APP_TIMEZONE=UTC
+APP_URL=http://localhost
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+# Настройки базы данных
+DB_CONNECTION=mysql
+DB_HOST=db
+DB_PORT=3306
+DB_DATABASE=lara_polcar_items
+DB_USERNAME=root
+DB_PASSWORD=secret
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+# Настройки почты для импорта
+IMAP_HOST=imap.yandex.ru
+IMAP_PORT=993
+IMAP_ENCRYPTION=ssl
+IMAP_USERNAME=your_email@yandex.ru
+IMAP_PASSWORD=your_app_password
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+# Настройки отправки отчетов
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.yandex.ru
+MAIL_PORT=465
+MAIL_USERNAME=your_email@yandex.ru
+MAIL_PASSWORD=your_app_password
+MAIL_ENCRYPTION=ssl
+MAIL_FROM_ADDRESS=your_email@yandex.ru
+MAIL_FROM_NAME="MailaExcelImport"
+```
+## Шаг 3: Запуск контейнеров
+```bash
+# Сборка и запуск контейнеров
+docker-compose up -d --build
+```
 
-## Laravel Sponsors
+## Шаг 4: Установка зависимостей и настройка
+```bash
+# Вход в контейнер приложения
+make cli
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+# Установка зависимостей внутри контейнера
+composer install  
 
-### Premium Partners
+# Генерация ключа приложения
+php artisan key:generate
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+# Запуск миграций
+php artisan migrate --force
+```
 
-## Contributing
-
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## Использование
+Команда Artisan
+```bash
+# Запуск импорта вручную
+php artisan import:email
+```
