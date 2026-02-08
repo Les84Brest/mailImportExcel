@@ -2,13 +2,16 @@
 
 namespace App\Console\Commands;
 
+use App\Mail\ImportReportMail;
 use Illuminate\Console\Command;
 use Webklex\PHPIMAP\ClientManager;
 use Webklex\IMAP\Facades\Client;
 use Illuminate\Support\Facades\Log;
 use App\Models\ImportHistory;
 use App\Services\ExcelImportService;
+use App\Services\ReportCSVService;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Webklex\PHPIMAP\Support\FolderCollection;
 
 class EmailImport extends Command
@@ -37,11 +40,22 @@ class EmailImport extends Command
      */
     protected array $allowedExtensions = ['xlsx', 'xls'];
 
-    /**
-     * Сервис импорта Excel
-     */
-    public function __construct(private ExcelImportService $excelImportService)
-    {
+    private array $importStatistics = [
+        'processed_count' => 0,
+        'created_count' => 0,
+        'file_name' => '',
+        'import_date' => '',
+        'message_uid' => ''
+    ];
+
+    private string $csvFilePath = '';
+    private string $attachmentFilePath = '';
+
+
+    public function __construct(
+        private ExcelImportService $excelImportService,
+        private ReportCSVService $csvService
+    ) {
         parent::__construct();
     }
 
@@ -65,10 +79,25 @@ class EmailImport extends Command
 
             $this->info("Найдено {$messages->count()} писем для проверки");
 
-            $processedCount = $this->processMessages($messages);
+            $this->processMessages($messages);
 
-            $this->info("Обработка завершена. Обработано писем: {$processedCount}");
+            $this->info("Обработка завершена. Обработано позиций - {$this->importStatistics['processed_count']}. Импортировано позиций - {$this->importStatistics['created_count']}");
 
+            //отпраляем отчет
+            $this->csvFilePath = $this->importStatistics['processed_count'] > 0
+                ? $this->csvService->generateCSV()
+                : $this->csvService->createEmptyCsv();
+
+            $reportMail = new ImportReportMail(
+                $this->importStatistics['processed_count'],
+                $this->importStatistics['created_count'],
+                $this->importStatistics['import_date'],
+                $this->csvFilePath
+            );
+
+            Mail::to(env('MAIL_IMPORT_REPORT_RECIEVER_EMAIL'),)->send($reportMail);
+
+            $this->info("Отчет о импорте отправлен на email " . env('MAIL_IMPORT_REPORT_RECIEVER_EMAIL'));
             return Command::SUCCESS;
         } catch (\Exception $e) {
             $this->error('Ошибка: ' . $e->getMessage());
@@ -125,37 +154,50 @@ class EmailImport extends Command
     /**
      * Обработка писем
      */
-    private function processMessages($messages): int
+    private function processMessages($messages)
     {
-        $processedCount = 0;
+        $messagesWithExcelAttachments = array_filter(
+            $messages->toArray(),
+            function ($msg) {
+                $attachments = $msg->getAttachments();
+                $excelAttachments = $this->filterExcelAttachments($attachments);
 
-        foreach ($messages as $message) {
-            try {
-                if ($message->getAttachments()->count()) {
-                    $attachments = $message->getAttachments();
-                    $excelAttachments = $this->filterExcelAttachments($attachments);
-
-                    if (count($excelAttachments) > 0) {
-                        $isProcessed = ImportHistory::isMessageProcessed($message->getMessageId());
-                        if ($isProcessed) continue;
-
-                        $processedFiles = $this->downloadAndProcessAttachments($excelAttachments, $message);
-                    }
-                }
-
-                $processedCount++;
-                $this->info("  ✓ Письмо успешно обработано");
-            } catch (\Exception $e) {
-                $this->error("  ✗ Ошибка обработки письма: " . $e->getMessage());
-                Log::error('Ошибка обработки письма', [
-                    'mail_id' => $mailId ?? 'unknown',
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
-                ]);
+                return count($excelAttachments) > 0;
             }
+        );
+
+        if (!count($messagesWithExcelAttachments)) {
+            $this->info("Нет писем для импорта");
+            exit();
         }
 
-        return $processedCount;
+        $actualMessage = array_reduce($messagesWithExcelAttachments, function ($acc, $current) {
+            if (!isset($acc)) {
+                return $current;
+            }
+
+            return $current->getDate() > $acc->getDate() ? $current : $acc;
+        }, null);
+
+        if (!isset($actualMessage)) {
+            $this->info("Нет писем для импорта");
+            exit();
+        }
+
+        try {
+            $attachments = $actualMessage->getAttachments();
+            $excelAttachments = $this->filterExcelAttachments($attachments);
+            $this->downloadAndProcessAttachments($excelAttachments, $actualMessage);
+
+            $this->info("  ✓ Письмо успешно обработано");
+        } catch (\Exception $e) {
+            $this->error("  ✗ Ошибка обработки письма: " . $e->getMessage());
+            Log::error('Ошибка обработки письма', [
+                'mail_id' => $mailId ?? 'unknown',
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
     }
 
     /**
@@ -182,9 +224,14 @@ class EmailImport extends Command
     /**
      * Скачивание и обработка вложений
      */
-    private function downloadAndProcessAttachments($attachments, $message): array
+    private function downloadAndProcessAttachments($attachments, $message)
     {
-        $processedFiles = [];
+
+        $isProcessed = ImportHistory::isMessageProcessed($message->getMessageId());
+
+        if ($isProcessed) {
+            return;
+        }
 
         foreach ($attachments as $attachment) {
             try {
@@ -211,13 +258,19 @@ class EmailImport extends Command
                 ];
 
                 //сохраняем id письма и статистику по импорту
+
+                $this->importStatistics['processed_count'] = $processedData['processed_rows'];
+                $this->importStatistics['created_count'] = $processedData['imported_rows'];
+                $this->importStatistics['file_name'] = $originalName;
+                $this->importStatistics['import_date'] = now();
+                $this->importStatistics['message_uid'] = $message->getMessageId();
+
                 ImportHistory::create([
                     'mail_id' => $message->getMessageId(),
                     'created_count' =>  $processedData['imported_rows'] ?? 0,
                     'total_items' => $processedData['processed_rows'] ?? 0,
                     'filename' => $originalName,
                     'completed_at' => now(),
-                    
                 ]);
 
                 $this->info("  Файл обработан. Строк: " . ($processedData['processed_rows'] ?? 0));
@@ -237,20 +290,18 @@ class EmailImport extends Command
     private function saveAttachment($attachment, $message): ?string
     {
         try {
+
             $originalName = $attachment->getName();
             $extension = pathinfo($originalName, PATHINFO_EXTENSION);
             $originalFileName = pathinfo($originalName, PATHINFO_FILENAME);
 
             $hash = substr(Hash::make(now()), 0, 15);
             $date = now()->format('Y-m-d_His');
-
-
-
             $saveFolder = storage_path($this->storagePath);
             $saveName = "{$originalFileName}-{$hash}-{$date}.$extension";
 
             $attachment->save($saveFolder, $saveName);
-
+            $this->attachmentFilePath = "$saveFolder/$saveName";
 
             Log::info('Excel файл скачан из почты', [
                 'original_name' => $originalName,
@@ -267,6 +318,17 @@ class EmailImport extends Command
                 'error' => $e->getMessage()
             ]);
             return null;
+        }
+    }
+
+    public function __destruct()
+    {
+        if (file_exists($this->csvFilePath)) {
+            unlink($this->csvFilePath);
+        }
+
+        if (file_exists($this->attachmentFilePath)) {
+            unlink($this->attachmentFilePath);
         }
     }
 }
