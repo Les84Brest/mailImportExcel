@@ -52,7 +52,7 @@ class ExcelImportService
                         'article_id' => $row['pin'],
                         'price' => (float) $row['price'],
                         'amount' => (int) $row['count'],
-                        'delivery_date' => null,
+                        'delivery_date' => '0000-00-00',
                     ]);
 
                     $importedParts++;
