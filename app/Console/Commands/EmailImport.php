@@ -9,6 +9,7 @@ use Webklex\IMAP\Facades\Client;
 use Illuminate\Support\Facades\Log;
 use App\Models\ImportHistory;
 use App\Services\ExcelImportService;
+use App\Services\ReportCSVService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Webklex\PHPIMAP\Support\FolderCollection;
@@ -47,9 +48,14 @@ class EmailImport extends Command
         'message_uid' => ''
     ];
 
+    private string $csvFilePath = '';
+    private string $attachmentFilePath = '';
 
-    public function __construct(private ExcelImportService $excelImportService)
-    {
+
+    public function __construct(
+        private ExcelImportService $excelImportService,
+        private ReportCSVService $csvService
+    ) {
         parent::__construct();
     }
 
@@ -75,14 +81,19 @@ class EmailImport extends Command
 
             $this->processMessages($messages);
 
-            $this->info("Обработка завершена");
+            $this->info("Обработка завершена. Обработано позиций - {$this->importStatistics['processed_count']}. Импортировано позиций - {$this->importStatistics['created_count']}");
 
             //отпраляем отчет
+            $this->csvFilePath = $this->importStatistics['processed_count'] > 0
+                ? $this->csvService->generateCSV()
+                : $this->csvService->createEmptyCsv();
+
             $reportMail = new ImportReportMail(
-                $this->importStatistics['processed_count'], 
-                $this->importStatistics['created_count'], 
-                $this->importStatistics['import_date'], 
-                );
+                $this->importStatistics['processed_count'],
+                $this->importStatistics['created_count'],
+                $this->importStatistics['import_date'],
+                $this->csvFilePath
+            );
 
             Mail::to(env('MAIL_IMPORT_REPORT_RECIEVER_EMAIL'),)->send($reportMail);
 
@@ -213,9 +224,14 @@ class EmailImport extends Command
     /**
      * Скачивание и обработка вложений
      */
-    private function downloadAndProcessAttachments($attachments, $message): array
+    private function downloadAndProcessAttachments($attachments, $message)
     {
-        $processedFiles = [];
+
+        $isProcessed = ImportHistory::isMessageProcessed($message->getMessageId());
+
+        if ($isProcessed) {
+            return;
+        }
 
         foreach ($attachments as $attachment) {
             try {
@@ -274,20 +290,18 @@ class EmailImport extends Command
     private function saveAttachment($attachment, $message): ?string
     {
         try {
+
             $originalName = $attachment->getName();
             $extension = pathinfo($originalName, PATHINFO_EXTENSION);
             $originalFileName = pathinfo($originalName, PATHINFO_FILENAME);
 
             $hash = substr(Hash::make(now()), 0, 15);
             $date = now()->format('Y-m-d_His');
-
-
-
             $saveFolder = storage_path($this->storagePath);
             $saveName = "{$originalFileName}-{$hash}-{$date}.$extension";
 
             $attachment->save($saveFolder, $saveName);
-
+            $this->attachmentFilePath = "$saveFolder/$saveName";
 
             Log::info('Excel файл скачан из почты', [
                 'original_name' => $originalName,
@@ -304,6 +318,17 @@ class EmailImport extends Command
                 'error' => $e->getMessage()
             ]);
             return null;
+        }
+    }
+
+    public function __destruct()
+    {
+        if (file_exists($this->csvFilePath)) {
+            unlink($this->csvFilePath);
+        }
+
+        if (file_exists($this->attachmentFilePath)) {
+            unlink($this->attachmentFilePath);
         }
     }
 }

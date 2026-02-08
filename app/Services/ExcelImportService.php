@@ -61,7 +61,7 @@ class ExcelImportService
 
             $fileImportStat = [
                 'imported_rows' => $importedParts,
-                'processed_rows' =>$rowNum -1,
+                'processed_rows' => $rowNum - 1,
             ];
         } catch (\Error $e) {
             Log::error('Ошибка обработки Excel файла: ' . $e->getMessage(), [

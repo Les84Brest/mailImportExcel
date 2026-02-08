@@ -3,7 +3,7 @@
 namespace App\Mail;
 
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
@@ -20,6 +20,7 @@ class ImportReportMail extends Mailable
         private string $linesCount,
         private string $createdPartsCount,
         private string $importDate,
+        private string $upatedPartsCSVPath
     ) {}
 
     /**
@@ -44,7 +45,7 @@ class ImportReportMail extends Mailable
                 'createdPartsCount' => $this->createdPartsCount,
                 'importDate' => $this->importDate,
             ],
-            
+
         );
     }
 
@@ -55,6 +56,10 @@ class ImportReportMail extends Mailable
      */
     public function attachments(): array
     {
-        return [];
+        return [
+            Attachment::fromPath($this->upatedPartsCSVPath)
+                ->as('imported_items_' . now()->format('Y-m-d') . '.csv')
+                ->withMime('text/csv'),
+        ];
     }
 }
