@@ -50,7 +50,7 @@ MailExcelImport/
 - Загрузка и обработка Excel файлов
 - Отправка отчетов
   
-`app/Services/ExcelImportService.php `- Сервис обработки Excel
+`app/Services/ExcelImportService.php `- Сервис парсинга Excel
 - Парсинг Excel файлов
 - Валидация данных
 - Импорт в базу данных
@@ -60,8 +60,9 @@ MailExcelImport/
 - Статистика выполнения
 
 `database/migrations/ `- Миграции базы данных
+`database/import/ `- папка для дампа таблицы lara_polcar_items
 
-## Развертывание проекта
+## Разворачивание проекта
 
 ## Шаг 1: Клонирование проекта
 ```bash
@@ -76,41 +77,7 @@ cp .env.example .env
 # Редактируем .env файл
 nano .env
 ```
-### Основные настройки в .env:
-```
-env
-APP_NAME=Laravel
-APP_ENV=local
-APP_KEY=
-APP_DEBUG=true
-APP_TIMEZONE=UTC
-APP_URL=http://localhost
 
-# Настройки базы данных
-DB_CONNECTION=mysql
-DB_HOST=db
-DB_PORT=3306
-DB_DATABASE=lara_polcar_items
-DB_USERNAME=root
-DB_PASSWORD=secret
-
-# Настройки почты для импорта
-IMAP_HOST=imap.yandex.ru
-IMAP_PORT=993
-IMAP_ENCRYPTION=ssl
-IMAP_USERNAME=your_email@yandex.ru
-IMAP_PASSWORD=your_app_password
-
-# Настройки отправки отчетов
-MAIL_MAILER=smtp
-MAIL_HOST=smtp.yandex.ru
-MAIL_PORT=465
-MAIL_USERNAME=your_email@yandex.ru
-MAIL_PASSWORD=your_app_password
-MAIL_ENCRYPTION=ssl
-MAIL_FROM_ADDRESS=your_email@yandex.ru
-MAIL_FROM_NAME="MailaExcelImport"
-```
 ## Шаг 3: Запуск контейнеров
 ```bash
 # Сборка и запуск контейнеров
@@ -129,12 +96,24 @@ composer install
 php artisan key:generate
 
 # Запуск миграций
-php artisan migrate --force
+php artisan migrate 
+
+# Заполнение таблицы lara_polcar_items
+php artisan db:seed --class=LaraPolcarItemsSeeder
 ```
 
 ## Использование
-Команда Artisan
+Указываем в .env свои данные по ящикам 
+В переменную MAIL_IMPORT_REPORT_RECIEVER_EMAIL прописываем email, на который пойдет отчет
+Отсылаем файл для импорта на ящик semalexnik@yandex.ru
+Запускаем команду Artisan
 ```bash
-# Запуск импорта вручную
+
 php artisan import:email
 ```
+
+Доступ в phpMyAdmin http://localhost:8085
+root
+secret
+Смотрим что и как сформировалось
+Также на письмо из .env MAIL_IMPORT_REPORT_RECIEVER_EMAIL придет отчет с csv файлом
