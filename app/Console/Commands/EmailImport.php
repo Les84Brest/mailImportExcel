@@ -259,8 +259,8 @@ class EmailImport extends Command
 
                 //сохраняем id письма и статистику по импорту
 
-                $this->importStatistics['processed_count'] = $processedData['processed_rows'];
-                $this->importStatistics['created_count'] = $processedData['imported_rows'];
+                $this->importStatistics['processed_count'] = $processedData['processed_rows'] ?? 0;
+                $this->importStatistics['created_count'] = $processedData['imported_rows'] ?? 0;
                 $this->importStatistics['file_name'] = $originalName;
                 $this->importStatistics['import_date'] = now();
                 $this->importStatistics['message_uid'] = $message->getMessageId();
@@ -282,8 +282,6 @@ class EmailImport extends Command
                 ]);
             }
         }
-
-        return $processedFiles;
     }
 
 
